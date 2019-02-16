@@ -4,29 +4,26 @@ using System.Threading.Tasks;
 
 namespace BackgroundQueue
 {
-	public interface IBackgroundQueue : IDisposable
+	public interface IBackgroundQueue
 	{
+		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
+
 		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem);
 	}
 
 	public class BackgroundQueue : IBackgroundQueue
 	{
+		private readonly BackgroundQueueOptions _options;
 		private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 		private readonly TaskCompletionSource<int> _final = new TaskCompletionSource<int>();
 		private int _active = 1;
 
-		/// <inheritdoc />
-		public void Dispose()
+		public BackgroundQueue(BackgroundQueueOptions options)
 		{
-			Dispose(true);
-			GC.SuppressFinalize(this);
+			_options = options ?? throw new ArgumentNullException(nameof(options));
 		}
 
-		protected virtual void Dispose(bool disposing)
-		{
-		}
-
-		private async Task StopAsync(CancellationToken cancellationToken)
+		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
 			var cancellationTokenSource = Interlocked.Exchange(ref _cancellationTokenSource, null);
 			if (cancellationTokenSource == null) return;
@@ -35,7 +32,9 @@ namespace BackgroundQueue
 			{
 				var count = Interlocked.Decrement(ref _active);
 				return Task.FromResult(count);
-			}, CancellationToken.None).ConfigureAwait(false);
+
+				// this task must not be cancelled
+			}, CancellationToken.None);
 
 			// signal that active tasks should stop
 			try
@@ -47,16 +46,18 @@ namespace BackgroundQueue
 				// ignore unhandled exceptions from registered callbacks
 			}
 
-			// wait for all tasks to stop
-			var canceledCompletionSource = new TaskCompletionSource<int>();
+			var linkedTokenCompletionSource = new TaskCompletionSource<int>();
+
 			using (cancellationTokenSource)
-			using (cancellationToken.Register(() => canceledCompletionSource.SetCanceled()))
+			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
+			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))
+			using (linkedCts.Token.Register(() => linkedTokenCompletionSource.SetCanceled()))
 			{
-				var task = await Task.WhenAny(_final.Task, canceledCompletionSource.Task).ConfigureAwait(false);
-				if (task == canceledCompletionSource.Task)
-				{
-					return Task.FromCanceled(cancellationToken);
-				}
+				// wait for all tasks to stop
+				await decrementTask.ConfigureAwait(false);
+				var task = await Task.WhenAny(_final.Task, linkedTokenCompletionSource.Task).ConfigureAwait(false);
+				if (task == linkedTokenCompletionSource.Task)
+					linkedCts.Token.ThrowIfCancellationRequested();
 			}
 		}
 
@@ -72,23 +73,26 @@ namespace BackgroundQueue
 
 		private Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
 		{
-			if (cancellationToken.IsCancellationRequested)
-				return Task.FromCanceled<TResult>(cancellationToken);
-
 			Interlocked.Increment(ref _active);
 
 			var task = Task.Run(async () =>
 			{
 				try
 				{
+					cancellationToken.ThrowIfCancellationRequested();
 					return await workItem(cancellationToken).ConfigureAwait(false);
 				}
 				finally
 				{
 					var count = Interlocked.Decrement(ref _active);
 					if (count == 0)
+					{
+						// signal that all tasks are complete
 						_final.TrySetResult(0);
+					}
 				}
+
+				// this outer task must not be cancelled
 			}, CancellationToken.None);
 
 			return task;
