@@ -16,32 +16,9 @@ namespace BackgroundQueue.Tests
 
 			var result = await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false);
 			Assert.Equal(1, result);
-		}
 
-		[Fact]
-		public async Task Enqueue_GivenStop_ThenCancels()
-		{
-			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
-
-			var delay = TimeSpan.FromMilliseconds(100);
-			var stopwatch = Stopwatch.StartNew();
-			var delayTask = queue.Enqueue(async token =>
-			{
-				await Task.Delay(delay, token).ConfigureAwait(false);
-				return stopwatch.Elapsed;
-			});
-
-			// try to make sure the delay task starts
-			await Task.Yield();
-
-			var stopTask = queue.StopAsync();
-			await Assert.ThrowsAsync<TaskCanceledException>(async () =>
-				await Task.WhenAll(delayTask, stopTask).ConfigureAwait(false)
-			).ConfigureAwait(false);
-
-			// the stop task should have ran to completion
-			await stopTask.ConfigureAwait(false);
+			// cleanup
+			await queue.StopAsync().ConfigureAwait(false);
 		}
 
 		[Fact]
@@ -60,6 +37,9 @@ namespace BackgroundQueue.Tests
 
 			var delta = elapsed - delay;
 			Assert.InRange(delta.TotalMilliseconds, 0, 25);
+
+			// cleanup
+			await queue.StopAsync().ConfigureAwait(false);
 		}
 
 		[Fact]
@@ -70,6 +50,22 @@ namespace BackgroundQueue.Tests
 
 			await Assert.ThrowsAsync<ApplicationException>(async () =>
 				await queue.Enqueue<int>(token => throw new ApplicationException()).ConfigureAwait(false)
+			).ConfigureAwait(false);
+
+			// cleanup
+			await queue.StopAsync().ConfigureAwait(false);
+		}
+
+		[Fact]
+		public async Task Enqueue_GivenStop_ThenDisposed()
+		{
+			var options = new BackgroundQueueOptions();
+			var queue = new BackgroundQueue(options);
+
+			await queue.StopAsync().ConfigureAwait(false);
+
+			await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+					await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false)
 			).ConfigureAwait(false);
 		}
 
@@ -87,7 +83,37 @@ namespace BackgroundQueue.Tests
 		}
 
 		[Fact]
-		public async Task StopAsync_GivenCancelledToken_ThrowsOperationCanceled()
+		public async Task StopAsync_GivenTask_ThenTaskCanceled()
+		{
+			var options = new BackgroundQueueOptions();
+			var queue = new BackgroundQueue(options);
+
+			var tcs = new TaskCompletionSource<int>();
+
+			var delay = TimeSpan.FromMilliseconds(100);
+			var stopwatch = Stopwatch.StartNew();
+			var delayTask = queue.Enqueue(async token =>
+			{
+				tcs.SetResult(0);
+
+				await Task.Delay(delay, token).ConfigureAwait(false);
+				return stopwatch.Elapsed;
+			});
+
+			// make sure the delay task has started
+			await tcs.Task.ConfigureAwait(false);
+
+			var stopTask = queue.StopAsync();
+			await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+				await Task.WhenAll(delayTask, stopTask).ConfigureAwait(false)
+			).ConfigureAwait(false);
+
+			// the stop task should have ran to completion
+			await stopTask.ConfigureAwait(false);
+		}
+
+		[Fact]
+		public async Task StopAsync_GivenCancelledToken_ThenTaskCanceled()
 		{
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueue(options);
@@ -96,7 +122,7 @@ namespace BackgroundQueue.Tests
 			var delay = queue.Enqueue(token => tcs.Task);
 
 			var cancellationToken = new CancellationToken(true);
-			await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+			await Assert.ThrowsAsync<TaskCanceledException>(async () =>
 				await queue.StopAsync(cancellationToken).ConfigureAwait(false)
 			).ConfigureAwait(false);
 
@@ -105,7 +131,7 @@ namespace BackgroundQueue.Tests
 		}
 
 		[Fact]
-		public async Task StopAsync_GivenShutdownTimeout_ThrowsOperationCanceled()
+		public async Task StopAsync_GivenShutdownTimeout_ThenTaskCanceled()
 		{
 			var options = new BackgroundQueueOptions
 			{
@@ -118,7 +144,7 @@ namespace BackgroundQueue.Tests
 			var delay = queue.Enqueue(token => tcs.Task);
 
 			var stopwatch = Stopwatch.StartNew();
-			await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+			await Assert.ThrowsAsync<TaskCanceledException>(async () =>
 				await queue.StopAsync(CancellationToken.None).ConfigureAwait(false)
 			).ConfigureAwait(false);
 			var elapsed = stopwatch.Elapsed;

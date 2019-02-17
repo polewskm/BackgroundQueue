@@ -14,8 +14,10 @@ namespace BackgroundQueue
 	public class BackgroundQueue : IBackgroundQueue
 	{
 		private readonly BackgroundQueueOptions _options;
-		private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 		private readonly TaskCompletionSource<int> _final = new TaskCompletionSource<int>();
+		private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+
+		// when this count reaches zero, then the queue is considered closed and waiting for shutdown
 		private int _active = 1;
 
 		public BackgroundQueue(BackgroundQueueOptions options)
@@ -46,18 +48,14 @@ namespace BackgroundQueue
 				// ignore unhandled exceptions from registered callbacks
 			}
 
-			var linkedTokenCompletionSource = new TaskCompletionSource<int>();
-
 			using (cancellationTokenSource)
 			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
 			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))
-			using (linkedCts.Token.Register(() => linkedTokenCompletionSource.SetCanceled()))
+			using (linkedCts.Token.Register(() => _final.TrySetCanceled()))
 			{
 				// wait for all tasks to stop
 				await decrementTask.ConfigureAwait(false);
-				var task = await Task.WhenAny(_final.Task, linkedTokenCompletionSource.Task).ConfigureAwait(false);
-				if (task == linkedTokenCompletionSource.Task)
-					linkedCts.Token.ThrowIfCancellationRequested();
+				await _final.Task.ConfigureAwait(false);
 			}
 		}
 
@@ -66,7 +64,7 @@ namespace BackgroundQueue
 		{
 			var cancellationTokenSource = Interlocked.CompareExchange(ref _cancellationTokenSource, null, null);
 			if (cancellationTokenSource == null)
-				throw new ObjectDisposedException(GetType().FullName);
+				throw new InvalidOperationException("Cannot Enqueue after Queue has been Stopped.");
 
 			return Enqueue(workItem, cancellationTokenSource.Token);
 		}
@@ -88,6 +86,7 @@ namespace BackgroundQueue
 					if (count == 0)
 					{
 						// signal that all tasks are complete
+						// and that we are shutting down
 						_final.TrySetResult(0);
 					}
 				}
