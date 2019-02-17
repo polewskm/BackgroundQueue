@@ -11,11 +11,29 @@ namespace BackgroundQueue
 		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem);
 	}
 
+	public class BackgroundQueueState : IDisposable
+	{
+		private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+		private readonly SemaphoreSlim _semaphore;
+
+		public BackgroundQueueState()
+		{
+			_semaphore = new SemaphoreSlim(0, 10);
+		}
+
+		public void Dispose()
+		{
+			_cancellationTokenSource.Dispose();
+			_semaphore.Dispose();
+		}
+	}
+
 	public class BackgroundQueue : IBackgroundQueue
 	{
 		private readonly BackgroundQueueOptions _options;
 		private readonly TaskCompletionSource<int> _final = new TaskCompletionSource<int>();
 		private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+		private SemaphoreSlim _semaphore;
 
 		// when this count reaches zero, then the queue is considered closed and waiting for shutdown
 		private int _active = 1;
@@ -73,8 +91,13 @@ namespace BackgroundQueue
 		{
 			Interlocked.Increment(ref _active);
 
+			var semaphore = Interlocked.CompareExchange(ref _semaphore, null, null);
+
 			var task = Task.Run(async () =>
 			{
+				if (semaphore != null)
+					await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
 				try
 				{
 					cancellationToken.ThrowIfCancellationRequested();
@@ -82,6 +105,8 @@ namespace BackgroundQueue
 				}
 				finally
 				{
+					semaphore?.Release();
+
 					var count = Interlocked.Decrement(ref _active);
 					if (count == 0)
 					{
