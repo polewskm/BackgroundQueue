@@ -11,115 +11,35 @@ namespace BackgroundQueue
 		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem);
 	}
 
-	public class BackgroundQueueState : IDisposable
-	{
-		private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-		private readonly SemaphoreSlim _semaphore;
-
-		public BackgroundQueueState()
-		{
-			_semaphore = new SemaphoreSlim(0, 10);
-		}
-
-		public void Dispose()
-		{
-			_cancellationTokenSource.Dispose();
-			_semaphore.Dispose();
-		}
-	}
-
 	public class BackgroundQueue : IBackgroundQueue
 	{
-		private readonly BackgroundQueueOptions _options;
-		private readonly TaskCompletionSource<int> _final = new TaskCompletionSource<int>();
-		private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-		private SemaphoreSlim _semaphore;
-
-		// when this count reaches zero, then the queue is considered closed and waiting for shutdown
-		private int _active = 1;
+		private IBackgroundQueueState _state;
 
 		public BackgroundQueue(BackgroundQueueOptions options)
 		{
-			_options = options ?? throw new ArgumentNullException(nameof(options));
+			_state = new BackgroundQueueState(options);
 		}
 
 		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			var cancellationTokenSource = Interlocked.Exchange(ref _cancellationTokenSource, null);
-			if (cancellationTokenSource == null) return;
+			var state = Interlocked.Exchange(ref _state, null);
+			if (state == null)
+				throw new InvalidOperationException("Cannot Stop the Queue more than once.");
 
-			var decrementTask = Enqueue(token =>
+			using (state)
 			{
-				var count = Interlocked.Decrement(ref _active);
-				return Task.FromResult(count);
-
-				// this task must not be cancelled
-			}, CancellationToken.None);
-
-			// signal that active tasks should stop
-			try
-			{
-				cancellationTokenSource.Cancel(false);
-			}
-			catch
-			{
-				// ignore unhandled exceptions from registered callbacks
-			}
-
-			using (cancellationTokenSource)
-			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
-			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))
-			using (linkedCts.Token.Register(() => _final.TrySetCanceled()))
-			{
-				// wait for all tasks to stop
-				await decrementTask.ConfigureAwait(false);
-				await _final.Task.ConfigureAwait(false);
+				await state.StopAsync(cancellationToken).ConfigureAwait(false);
 			}
 		}
 
 		/// <inheritdoc />
 		public virtual Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem)
 		{
-			var cancellationTokenSource = Interlocked.CompareExchange(ref _cancellationTokenSource, null, null);
-			if (cancellationTokenSource == null)
-				throw new InvalidOperationException("Cannot Enqueue after Queue has been Stopped.");
+			var state = Interlocked.CompareExchange(ref _state, null, null);
+			if (state == null)
+				throw new InvalidOperationException("Cannot Enqueue after the Queue has been Stopped.");
 
-			return Enqueue(workItem, cancellationTokenSource.Token);
-		}
-
-		private Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
-		{
-			Interlocked.Increment(ref _active);
-
-			var semaphore = Interlocked.CompareExchange(ref _semaphore, null, null);
-
-			var task = Task.Run(async () =>
-			{
-				if (semaphore != null)
-					await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-				try
-				{
-					cancellationToken.ThrowIfCancellationRequested();
-					return await workItem(cancellationToken).ConfigureAwait(false);
-				}
-				finally
-				{
-					semaphore?.Release();
-
-					var count = Interlocked.Decrement(ref _active);
-					if (count == 0)
-					{
-						// signal that all tasks are complete
-						// and that we are shutting down
-						_final.TrySetResult(0);
-					}
-				}
-
-				// this outer task must not be cancelled
-			}, CancellationToken.None);
-
-			return task;
+			return state.Enqueue(workItem);
 		}
 
 	}
