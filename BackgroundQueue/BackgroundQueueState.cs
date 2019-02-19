@@ -14,7 +14,7 @@ namespace BackgroundQueue
 
 		Task OnStarting(CancellationToken cancellationToken);
 
-		Task OnCompleted(Task antecedant);
+		Task OnCompleted(Task antecedent);
 	}
 
 	public class BackgroundQueueState : IBackgroundQueueState
@@ -134,7 +134,7 @@ namespace BackgroundQueue
 			return Task.CompletedTask;
 		}
 
-		public virtual Task OnCompleted(Task antecedant)
+		public virtual Task OnCompleted(Task antecedent)
 		{
 			if (Interlocked.Decrement(ref _active) == 0)
 			{
