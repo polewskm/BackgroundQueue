@@ -110,9 +110,9 @@ namespace BackgroundQueue
 			}, cancellationToken, creationOptions, _scheduler).Unwrap();
 
 			// cleanup when the work item completes
-			task.ContinueWith(async antecedant =>
+			task.ContinueWith(async antecedent =>
 			{
-				await OnCompleted(antecedant).ConfigureAwait(false);
+				await OnCompleted(antecedent).ConfigureAwait(false);
 
 				// this continuation cannot be cancelled
 				// because OnCompleted must be called
