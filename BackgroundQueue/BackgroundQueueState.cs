@@ -4,49 +4,22 @@ using System.Threading.Tasks;
 
 namespace BackgroundQueue
 {
-	public interface IWorkItemBase
-	{
-		Task GetTask();
-	}
-
-	public interface IWorkItem : IWorkItemBase
-	{
-		Task Task { get; }
-	}
-
-	public interface IWorkItem<TResult> : IWorkItemBase
-	{
-		Task<TResult> Task { get; }
-	}
-
-	public class WorkItem : IWorkItem
-	{
-		public Task GetTask() => Task;
-
-		public Task Task { get; set; }
-	}
-
-	public class WorkItem<TResult> : IWorkItem<TResult>
-	{
-		public Task GetTask() => Task;
-
-		public Task<TResult> Task { get; set; }
-	}
-
 	public interface IQueue2
 	{
-		IWorkItem QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task> workItemCallback);
+		IWorkItem QueueBackgroundWorkItem(Func<CancellationToken, Task> callback);
 
-		IWorkItem<TResult> QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task<TResult>> workItemCallback);
+		IWorkItem<TResult> QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task<TResult>> callback);
 
-		IWorkItemBase DequeueAsync(CancellationToken cancellationToken = default(CancellationToken));
+		Task<IWorkItemBase> DequeueAsync(CancellationToken cancellationToken = default(CancellationToken));
 	}
 
 	public interface IBackgroundQueueState : IDisposable
 	{
+		Task StartAsync(CancellationToken cancellationToken = default(CancellationToken));
+
 		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
 
-		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem);
+		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback);
 
 		void OnEnqueue();
 
@@ -62,11 +35,14 @@ namespace BackgroundQueue
 		private readonly TaskCompletionSource<int> _completion = new TaskCompletionSource<int>();
 		private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
-		private int _stop;
-		private int _total;
-
 		// when this count reaches zero, then the queue is considered closed and waiting for shutdown
 		private int _active = 1;
+		private int _total;
+
+		private int _state = StateInitial;
+		private const int StateInitial = 0;
+		private const int StateStarted = 1;
+		private const int StateStopped = 2;
 
 		public BackgroundQueueState(BackgroundQueueOptions options)
 		{
@@ -87,9 +63,18 @@ namespace BackgroundQueue
 			_cancellationTokenSource.Dispose();
 		}
 
+		public Task StartAsync(CancellationToken cancellationToken = default(CancellationToken))
+		{
+			if (Interlocked.CompareExchange(ref _state, StateStarted, StateInitial) != StateInitial)
+				throw new InvalidOperationException("TODO");
+
+			return Task.CompletedTask;
+		}
+
 		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			if (Interlocked.Exchange(ref _stop, 1) != 0) return;
+			if (Interlocked.CompareExchange(ref _state, StateStopped, StateStarted) != StateStarted)
+				throw new InvalidOperationException("TODO");
 
 			// instruct the queue that we are shutting down by decrementing the
 			// active count which will cause the last running task to cleanup
@@ -124,14 +109,17 @@ namespace BackgroundQueue
 			}
 		}
 
-		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem)
+		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback)
 		{
 			var cancellationToken = _cancellationTokenSource.Token;
-			return Enqueue(workItem, cancellationToken);
+			return Enqueue(callback, cancellationToken);
 		}
 
-		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
+		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback, CancellationToken cancellationToken)
 		{
+			if (Interlocked.CompareExchange(ref _state, StateStarted, StateStarted) != StateStarted)
+				throw new InvalidOperationException("TODO");
+
 			OnEnqueue();
 
 			// the scheduler is only used to enforce concurrency for our queue
@@ -144,7 +132,8 @@ namespace BackgroundQueue
 			{
 				await OnStarting(cancellationToken).ConfigureAwait(false);
 
-				var result = await workItem(cancellationToken).ConfigureAwait(false);
+				var result = await callback(cancellationToken).ConfigureAwait(false);
+
 				return result;
 
 			}, cancellationToken, creationOptions, _scheduler).Unwrap();

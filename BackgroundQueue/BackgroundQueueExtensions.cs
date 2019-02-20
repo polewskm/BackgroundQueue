@@ -23,13 +23,13 @@ namespace BackgroundQueue
 				: Task.FromException<TResult>(exception);
 		}
 
-		public static Task Enqueue(this IBackgroundQueue queue, Action workItem)
+		public static Task Enqueue(this IBackgroundQueue queue, Action callback)
 		{
 			return queue.Enqueue(token =>
 			{
 				try
 				{
-					workItem();
+					callback();
 				}
 				catch (Exception exception)
 				{
@@ -40,13 +40,13 @@ namespace BackgroundQueue
 			});
 		}
 
-		public static Task Enqueue(this IBackgroundQueue queue, Action<CancellationToken> workItem)
+		public static Task Enqueue(this IBackgroundQueue queue, Action<CancellationToken> callback)
 		{
 			return queue.Enqueue(token =>
 			{
 				try
 				{
-					workItem(token);
+					callback(token);
 				}
 				catch (Exception exception)
 				{
@@ -57,22 +57,22 @@ namespace BackgroundQueue
 			});
 		}
 
-		public static Task Enqueue(this IBackgroundQueue queue, Func<CancellationToken, Task> workItem)
+		public static Task Enqueue(this IBackgroundQueue queue, Func<CancellationToken, Task> callback)
 		{
 			return queue.Enqueue(async token =>
 			{
-				await workItem(token).ConfigureAwait(false);
+				await callback(token).ConfigureAwait(false);
 				return Task.FromResult(0);
 			});
 		}
 
-		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<TResult> workItem)
+		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<TResult> callback)
 		{
 			return queue.Enqueue(token =>
 			{
 				try
 				{
-					var result = workItem();
+					var result = callback();
 					return Task.FromResult(result);
 				}
 				catch (Exception exception)
@@ -82,13 +82,13 @@ namespace BackgroundQueue
 			});
 		}
 
-		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<CancellationToken, TResult> workItem)
+		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<CancellationToken, TResult> callback)
 		{
 			return queue.Enqueue(token =>
 			{
 				try
 				{
-					var result = workItem(token);
+					var result = callback(token);
 					return Task.FromResult(result);
 				}
 				catch (Exception exception)

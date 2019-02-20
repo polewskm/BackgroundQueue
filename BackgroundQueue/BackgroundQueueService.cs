@@ -6,16 +6,19 @@ namespace BackgroundQueue
 {
 	public interface IBackgroundQueue
 	{
-		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
-
-		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem);
+		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback);
 	}
 
-	public class BackgroundQueue : IBackgroundQueue
+	public interface IBackgroundQueueService : IBackgroundQueue
+	{
+		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
+	}
+
+	public class BackgroundQueueService : IBackgroundQueueService
 	{
 		private IBackgroundQueueState _state;
 
-		public BackgroundQueue(BackgroundQueueOptions options)
+		public BackgroundQueueService(BackgroundQueueOptions options)
 		{
 			_state = new BackgroundQueueState(options);
 		}
@@ -33,13 +36,13 @@ namespace BackgroundQueue
 		}
 
 		/// <inheritdoc />
-		public virtual Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> workItem)
+		public virtual Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback)
 		{
 			var state = Interlocked.CompareExchange(ref _state, null, null);
 			if (state == null)
 				throw new InvalidOperationException("Cannot Enqueue after the Queue has been Stopped.");
 
-			return state.Enqueue(workItem);
+			return state.Enqueue(callback);
 		}
 
 	}

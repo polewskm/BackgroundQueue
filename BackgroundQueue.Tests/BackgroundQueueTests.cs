@@ -12,7 +12,7 @@ namespace BackgroundQueue.Tests
 		public async Task Enqueue_GivenResult_ThenIsValid()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var result = await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false);
 			Assert.Equal(1, result);
@@ -25,7 +25,7 @@ namespace BackgroundQueue.Tests
 		public async Task Enqueue_GivenDelay_ThenIsValid()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var delay = TimeSpan.FromMilliseconds(100);
 			var stopwatch = Stopwatch.StartNew();
@@ -46,7 +46,7 @@ namespace BackgroundQueue.Tests
 		public async Task Enqueue_GivenException_ThenException()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			await Assert.ThrowsAsync<ApplicationException>(async () =>
 				await queue.Enqueue<int>(token => throw new ApplicationException()).ConfigureAwait(false)
@@ -60,7 +60,7 @@ namespace BackgroundQueue.Tests
 		public async Task Enqueue_GivenStop_ThenDisposed()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			await queue.StopAsync().ConfigureAwait(false);
 
@@ -73,7 +73,7 @@ namespace BackgroundQueue.Tests
 		public async Task StopAsync_GivenNoTasks_ThenStopsImmediately()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var stopwatch = Stopwatch.StartNew();
 			await queue.StopAsync().ConfigureAwait(false);
@@ -86,7 +86,7 @@ namespace BackgroundQueue.Tests
 		public async Task StopAsync_GivenTask_ThenTaskCanceled()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var tcs = new TaskCompletionSource<int>();
 
@@ -116,7 +116,7 @@ namespace BackgroundQueue.Tests
 		public async Task StopAsync_GivenCancelledToken_ThenTaskCanceled()
 		{
 			var options = new BackgroundQueueOptions();
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var tcs = new TaskCompletionSource<int>();
 			var delay = queue.Enqueue(token => tcs.Task);
@@ -138,7 +138,7 @@ namespace BackgroundQueue.Tests
 				ShutdownTimeout = TimeSpan.FromMilliseconds(50)
 			};
 
-			var queue = new BackgroundQueue(options);
+			var queue = new BackgroundQueueService(options);
 
 			var tcs = new TaskCompletionSource<int>();
 			var delay = queue.Enqueue(token => tcs.Task);
