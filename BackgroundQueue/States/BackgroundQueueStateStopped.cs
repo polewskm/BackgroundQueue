@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace BackgroundQueue.States
 {
-	public class BackgroundQueueStateStopped : IBackgroundQueueState
+	internal class BackgroundQueueStateStopped : IBackgroundQueueState
 	{
 		public void Dispose()
 		{

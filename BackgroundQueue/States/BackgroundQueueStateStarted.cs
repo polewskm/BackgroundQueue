@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace BackgroundQueue.States
 {
-	public class BackgroundQueueStateStarted : IBackgroundQueueState
+	internal class BackgroundQueueStateStarted : IBackgroundQueueState
 	{
 		private readonly TaskScheduler _scheduler;
 		private readonly BackgroundQueueOptions _options;
