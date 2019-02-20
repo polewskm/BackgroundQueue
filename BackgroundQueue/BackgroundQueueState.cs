@@ -4,6 +4,44 @@ using System.Threading.Tasks;
 
 namespace BackgroundQueue
 {
+	public interface IWorkItemBase
+	{
+		Task GetTask();
+	}
+
+	public interface IWorkItem : IWorkItemBase
+	{
+		Task Task { get; }
+	}
+
+	public interface IWorkItem<TResult> : IWorkItemBase
+	{
+		Task<TResult> Task { get; }
+	}
+
+	public class WorkItem : IWorkItem
+	{
+		public Task GetTask() => Task;
+
+		public Task Task { get; set; }
+	}
+
+	public class WorkItem<TResult> : IWorkItem<TResult>
+	{
+		public Task GetTask() => Task;
+
+		public Task<TResult> Task { get; set; }
+	}
+
+	public interface IQueue2
+	{
+		IWorkItem QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task> workItemCallback);
+
+		IWorkItem<TResult> QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task<TResult>> workItemCallback);
+
+		IWorkItemBase DequeueAsync(CancellationToken cancellationToken = default(CancellationToken));
+	}
+
 	public interface IBackgroundQueueState : IDisposable
 	{
 		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
@@ -73,6 +111,8 @@ namespace BackgroundQueue
 			{
 				// ignore unhandled exceptions from registered callbacks
 			}
+
+			//ThreadPool.
 
 			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
 			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))
