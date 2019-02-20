@@ -6,13 +6,15 @@ using Xunit;
 
 namespace BackgroundQueue.Tests
 {
-	public class BackgroundQueueTests
+	public class BackgroundQueueServiceTests
 	{
 		[Fact]
 		public async Task Enqueue_GivenResult_ThenIsValid()
 		{
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
+
+			await queue.StartAsync().ConfigureAwait(false);
 
 			var result = await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false);
 			Assert.Equal(1, result);
@@ -26,6 +28,8 @@ namespace BackgroundQueue.Tests
 		{
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
+
+			await queue.StartAsync().ConfigureAwait(false);
 
 			var delay = TimeSpan.FromMilliseconds(100);
 			var stopwatch = Stopwatch.StartNew();
@@ -47,6 +51,8 @@ namespace BackgroundQueue.Tests
 		{
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
+
+			await queue.StartAsync().ConfigureAwait(false);
 
 			await Assert.ThrowsAsync<ApplicationException>(async () =>
 				await queue.Enqueue<int>(token => throw new ApplicationException()).ConfigureAwait(false)
@@ -88,6 +94,8 @@ namespace BackgroundQueue.Tests
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
 
+			await queue.StartAsync().ConfigureAwait(false);
+
 			var tcs = new TaskCompletionSource<int>();
 
 			var delay = TimeSpan.FromMilliseconds(100);
@@ -118,6 +126,8 @@ namespace BackgroundQueue.Tests
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
 
+			await queue.StartAsync().ConfigureAwait(false);
+
 			var tcs = new TaskCompletionSource<int>();
 			var delay = queue.Enqueue(token => tcs.Task);
 
@@ -139,6 +149,8 @@ namespace BackgroundQueue.Tests
 			};
 
 			var queue = new BackgroundQueueService(options);
+
+			await queue.StartAsync().ConfigureAwait(false);
 
 			var tcs = new TaskCompletionSource<int>();
 			var delay = queue.Enqueue(token => tcs.Task);

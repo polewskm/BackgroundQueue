@@ -1,46 +1,64 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using BackgroundQueue.States;
 
 namespace BackgroundQueue
 {
-	public interface IBackgroundQueue
-	{
-		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback);
-	}
-
 	public interface IBackgroundQueueService : IBackgroundQueue
 	{
+		Task StartAsync(CancellationToken cancellationToken = default(CancellationToken));
+
 		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
 	}
 
 	public class BackgroundQueueService : IBackgroundQueueService
 	{
+		private readonly BackgroundQueueOptions _options;
+		private static readonly IBackgroundQueueState StoppedState = new BackgroundQueueStateStopped();
 		private IBackgroundQueueState _state;
 
 		public BackgroundQueueService(BackgroundQueueOptions options)
 		{
-			_state = new BackgroundQueueState(options);
+			_options = options ?? throw new ArgumentNullException(nameof(options));
 		}
 
-		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
+		/// <inheritdoc />
+		public Task StartAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			var state = Interlocked.Exchange(ref _state, null);
+			var state = Interlocked.CompareExchange(ref _state, null, null);
 			if (state == null)
-				throw new InvalidOperationException("Cannot Stop the Queue more than once.");
+			{
+				var newState = new BackgroundQueueStateStarted(_options);
+				state = Interlocked.CompareExchange(ref _state, newState, null);
+				if (state != null)
+				{
+					newState.Dispose();
+				}
+				else
+				{
+					state = newState;
+				}
+			}
+
+			return state.StartAsync(cancellationToken);
+		}
+
+		/// <inheritdoc />
+		public Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
+		{
+			var state = Interlocked.Exchange(ref _state, StoppedState) ?? StoppedState;
 
 			using (state)
 			{
-				await state.StopAsync(cancellationToken).ConfigureAwait(false);
+				return state.StopAsync(cancellationToken);
 			}
 		}
 
 		/// <inheritdoc />
 		public virtual Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback)
 		{
-			var state = Interlocked.CompareExchange(ref _state, null, null);
-			if (state == null)
-				throw new InvalidOperationException("Cannot Enqueue after the Queue has been Stopped.");
+			var state = Interlocked.CompareExchange(ref _state, null, null) ?? StoppedState;
 
 			return state.Enqueue(callback);
 		}

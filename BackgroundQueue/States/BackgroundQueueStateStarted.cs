@@ -2,33 +2,9 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace BackgroundQueue
+namespace BackgroundQueue.States
 {
-	public interface IQueue2
-	{
-		IWorkItem QueueBackgroundWorkItem(Func<CancellationToken, Task> callback);
-
-		IWorkItem<TResult> QueueBackgroundWorkItem<TResult>(Func<CancellationToken, Task<TResult>> callback);
-
-		Task<IWorkItemBase> DequeueAsync(CancellationToken cancellationToken = default(CancellationToken));
-	}
-
-	public interface IBackgroundQueueState : IDisposable
-	{
-		Task StartAsync(CancellationToken cancellationToken = default(CancellationToken));
-
-		Task StopAsync(CancellationToken cancellationToken = default(CancellationToken));
-
-		Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback);
-
-		void OnEnqueue();
-
-		Task OnStarting(CancellationToken cancellationToken);
-
-		Task OnCompleted(Task antecedent);
-	}
-
-	public class BackgroundQueueState : IBackgroundQueueState
+	public class BackgroundQueueStateStarted : IBackgroundQueueState
 	{
 		private readonly TaskScheduler _scheduler;
 		private readonly BackgroundQueueOptions _options;
@@ -39,12 +15,7 @@ namespace BackgroundQueue
 		private int _active = 1;
 		private int _total;
 
-		private int _state = StateInitial;
-		private const int StateInitial = 0;
-		private const int StateStarted = 1;
-		private const int StateStopped = 2;
-
-		public BackgroundQueueState(BackgroundQueueOptions options)
+		public BackgroundQueueStateStarted(BackgroundQueueOptions options)
 		{
 			_options = options ?? throw new ArgumentNullException(nameof(options));
 			_scheduler = options.Scheduler ?? TaskScheduler.Default;
@@ -65,17 +36,11 @@ namespace BackgroundQueue
 
 		public Task StartAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			if (Interlocked.CompareExchange(ref _state, StateStarted, StateInitial) != StateInitial)
-				throw new InvalidOperationException("TODO");
-
 			return Task.CompletedTask;
 		}
 
 		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			if (Interlocked.CompareExchange(ref _state, StateStopped, StateStarted) != StateStarted)
-				throw new InvalidOperationException("TODO");
-
 			// instruct the queue that we are shutting down by decrementing the
 			// active count which will cause the last running task to cleanup
 			// our resources
@@ -97,8 +62,6 @@ namespace BackgroundQueue
 				// ignore unhandled exceptions from registered callbacks
 			}
 
-			//ThreadPool.
-
 			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
 			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))
 			using (linkedCts.Token.Register(() => _completion.TrySetCanceled()))
@@ -117,9 +80,6 @@ namespace BackgroundQueue
 
 		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback, CancellationToken cancellationToken)
 		{
-			if (Interlocked.CompareExchange(ref _state, StateStarted, StateStarted) != StateStarted)
-				throw new InvalidOperationException("TODO");
-
 			OnEnqueue();
 
 			// the scheduler is only used to enforce concurrency for our queue
