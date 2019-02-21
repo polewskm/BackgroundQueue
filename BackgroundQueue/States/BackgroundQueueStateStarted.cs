@@ -80,6 +80,9 @@ namespace BackgroundQueue.States
 
 		public Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback, CancellationToken cancellationToken)
 		{
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			OnEnqueue();
 
 			// the scheduler is only used to enforce concurrency for our queue

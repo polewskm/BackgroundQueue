@@ -25,6 +25,11 @@ namespace BackgroundQueue
 
 		public static Task Enqueue(this IBackgroundQueue queue, Action callback)
 		{
+			if (queue == null)
+				throw new ArgumentNullException(nameof(queue));
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			return queue.Enqueue(token =>
 			{
 				try
@@ -42,6 +47,11 @@ namespace BackgroundQueue
 
 		public static Task Enqueue(this IBackgroundQueue queue, Action<CancellationToken> callback)
 		{
+			if (queue == null)
+				throw new ArgumentNullException(nameof(queue));
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			return queue.Enqueue(token =>
 			{
 				try
@@ -59,6 +69,11 @@ namespace BackgroundQueue
 
 		public static Task Enqueue(this IBackgroundQueue queue, Func<CancellationToken, Task> callback)
 		{
+			if (queue == null)
+				throw new ArgumentNullException(nameof(queue));
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			return queue.Enqueue(async token =>
 			{
 				await callback(token).ConfigureAwait(false);
@@ -68,6 +83,11 @@ namespace BackgroundQueue
 
 		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<TResult> callback)
 		{
+			if (queue == null)
+				throw new ArgumentNullException(nameof(queue));
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			return queue.Enqueue(token =>
 			{
 				try
@@ -84,6 +104,11 @@ namespace BackgroundQueue
 
 		public static Task<TResult> Enqueue<TResult>(this IBackgroundQueue queue, Func<CancellationToken, TResult> callback)
 		{
+			if (queue == null)
+				throw new ArgumentNullException(nameof(queue));
+			if (callback == null)
+				throw new ArgumentNullException(nameof(callback));
+
 			return queue.Enqueue(token =>
 			{
 				try
