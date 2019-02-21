@@ -5,7 +5,7 @@ using BackgroundQueue.States;
 
 namespace BackgroundQueue
 {
-	public interface IBackgroundQueueService : IBackgroundQueue
+	public interface IBackgroundQueueService : IBackgroundQueue, IDisposable
 	{
 		Task StartAsync(CancellationToken cancellationToken = default(CancellationToken));
 
@@ -21,6 +21,20 @@ namespace BackgroundQueue
 		public BackgroundQueueService(BackgroundQueueOptions options)
 		{
 			_options = options ?? throw new ArgumentNullException(nameof(options));
+		}
+
+		public void Dispose()
+		{
+			Dispose(true);
+			GC.SuppressFinalize(this);
+		}
+
+		protected virtual void Dispose(bool disposing)
+		{
+			if (!disposing) return;
+
+			var state = Interlocked.Exchange(ref _state, null);
+			state?.Dispose();
 		}
 
 		/// <inheritdoc />
