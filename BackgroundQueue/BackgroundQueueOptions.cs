@@ -13,7 +13,7 @@ namespace BackgroundQueue
 		public TaskScheduler Scheduler { get; set; }
 
 		/// <summary>
-		/// The default timeout for <see cref="IBackgroundQueue.StopAsync"/>.
+		/// The default timeout for <see cref="IBackgroundQueueService.StopAsync"/>.
 		/// </summary>
 		public TimeSpan ShutdownTimeout { get; set; } = TimeSpan.FromSeconds(5);
 	}

@@ -9,6 +9,17 @@ namespace BackgroundQueue.Tests
 	public class BackgroundQueueServiceTests
 	{
 		[Fact]
+		public async Task Enqueue_GivenNoStart_ThenException()
+		{
+			var options = new BackgroundQueueOptions();
+			var queue = new BackgroundQueueService(options);
+
+			await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+				await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false)
+			).ConfigureAwait(false);
+		}
+
+		[Fact]
 		public async Task Enqueue_GivenResult_ThenIsValid()
 		{
 			var options = new BackgroundQueueOptions();
@@ -31,7 +42,7 @@ namespace BackgroundQueue.Tests
 
 			await queue.StartAsync().ConfigureAwait(false);
 
-			var delay = TimeSpan.FromMilliseconds(100);
+			var delay = TimeSpan.FromMilliseconds(200);
 			var stopwatch = Stopwatch.StartNew();
 			var elapsed = await queue.Enqueue(async token =>
 			{
@@ -63,7 +74,7 @@ namespace BackgroundQueue.Tests
 		}
 
 		[Fact]
-		public async Task Enqueue_GivenStop_ThenDisposed()
+		public async Task Enqueue_GivenStop_ThenException()
 		{
 			var options = new BackgroundQueueOptions();
 			var queue = new BackgroundQueueService(options);
@@ -71,7 +82,7 @@ namespace BackgroundQueue.Tests
 			await queue.StopAsync().ConfigureAwait(false);
 
 			await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-					await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false)
+				await queue.Enqueue(token => Task.FromResult(1)).ConfigureAwait(false)
 			).ConfigureAwait(false);
 		}
 
@@ -159,8 +170,8 @@ namespace BackgroundQueue.Tests
 			await Assert.ThrowsAsync<TaskCanceledException>(async () =>
 				await queue.StopAsync(CancellationToken.None).ConfigureAwait(false)
 			).ConfigureAwait(false);
-			var elapsed = stopwatch.Elapsed;
 
+			var elapsed = stopwatch.Elapsed;
 			Assert.InRange(elapsed.TotalMilliseconds, 50, 100);
 
 			tcs.SetResult(0);
