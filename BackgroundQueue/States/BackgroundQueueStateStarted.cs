@@ -13,6 +13,7 @@ namespace BackgroundQueue.States
 
 		// when this count reaches zero, then the queue is considered closed and waiting for shutdown
 		private int _active = 1;
+		private int _extra = 1;
 		private int _total;
 
 		public BackgroundQueueStateStarted(BackgroundQueueOptions options)
@@ -20,6 +21,8 @@ namespace BackgroundQueue.States
 			_options = options ?? throw new ArgumentNullException(nameof(options));
 			_scheduler = options.Scheduler ?? TaskScheduler.Default;
 		}
+
+		public int ActiveCount => Interlocked.CompareExchange(ref _active, 0, 0) - Interlocked.CompareExchange(ref _extra, 0, 0);
 
 		public void Dispose()
 		{
@@ -41,17 +44,6 @@ namespace BackgroundQueue.States
 
 		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
-			// instruct the queue that we are shutting down by decrementing the
-			// active count which will cause the last running task to cleanup
-			// our resources
-			var decrementTask = Enqueue(token =>
-			{
-				var count = Interlocked.Decrement(ref _active);
-				return Task.FromResult(count);
-
-				// this task must not be cancelled
-			}, CancellationToken.None);
-
 			// signal that active tasks should stop
 			try
 			{
@@ -61,6 +53,18 @@ namespace BackgroundQueue.States
 			{
 				// ignore unhandled exceptions from registered callbacks
 			}
+
+			// instruct the queue that we are shutting down by decrementing the
+			// active count which will cause the last running task to cleanup
+			// our resources
+			var decrementTask = Enqueue(token =>
+			{
+				var count = Interlocked.Decrement(ref _active);
+				Interlocked.Exchange(ref _extra, 0);
+				return Task.FromResult(count);
+
+				// this task must not be cancelled
+			}, CancellationToken.None);
 
 			using (var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout))
 			using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, cancellationToken))

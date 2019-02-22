@@ -6,6 +6,8 @@ namespace BackgroundQueue.States
 {
 	internal class BackgroundQueueStateStopped : IBackgroundQueueState
 	{
+		public int ActiveCount => 0;
+
 		public void Dispose()
 		{
 			// nothing

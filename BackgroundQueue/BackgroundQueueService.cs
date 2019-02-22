@@ -37,6 +37,26 @@ namespace BackgroundQueue
 			state?.Dispose();
 		}
 
+		protected virtual void OnStarting()
+		{
+			// nothing
+		}
+
+		protected virtual void OnStopping(int activeCount)
+		{
+			// nothing
+		}
+
+		protected virtual void OnStopped(int activeCount, bool graceful)
+		{
+			// nothing
+		}
+
+		protected virtual void OnEnqueue(int activeCount)
+		{
+			// nothing
+		}
+
 		/// <inheritdoc />
 		public Task StartAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
@@ -55,17 +75,50 @@ namespace BackgroundQueue
 				}
 			}
 
+			try
+			{
+				OnStarting();
+			}
+			catch
+			{
+				// ignore
+			}
+
 			return state.StartAsync(cancellationToken);
 		}
 
 		/// <inheritdoc />
-		public Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
+		public async Task StopAsync(CancellationToken cancellationToken = default(CancellationToken))
 		{
 			var state = Interlocked.Exchange(ref _state, StoppedState) ?? StoppedState;
 
-			using (state)
+			try
 			{
-				return state.StopAsync(cancellationToken);
+				OnStopping(state.ActiveCount);
+			}
+			catch
+			{
+				// ignore
+			}
+
+			var graceful = false;
+			try
+			{
+				await state.StopAsync(cancellationToken).ConfigureAwait(false);
+				graceful = true;
+			}
+			finally
+			{
+				state.Dispose();
+
+				try
+				{
+					OnStopped(state.ActiveCount, graceful);
+				}
+				catch
+				{
+					// ignore
+				}
 			}
 		}
 
@@ -73,6 +126,15 @@ namespace BackgroundQueue
 		public virtual Task<TResult> Enqueue<TResult>(Func<CancellationToken, Task<TResult>> callback)
 		{
 			var state = Interlocked.CompareExchange(ref _state, null, null) ?? StoppedState;
+
+			try
+			{
+				OnEnqueue(state.ActiveCount);
+			}
+			catch
+			{
+				// ignore
+			}
 
 			return state.Enqueue(callback);
 		}
