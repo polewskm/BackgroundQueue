@@ -10,7 +10,28 @@ namespace BackgroundQueue.NetFx
 		private IBackgroundQueueService _service;
 		private Task _stopTask;
 
-		public IBackgroundQueue BackgroundQueue => _service;
+		public IBackgroundQueue BackgroundQueue
+		{
+			get
+			{
+				var service = Interlocked.CompareExchange(ref _service, null, null);
+				if (service == null)
+				{
+					var options = new BackgroundQueueOptions();
+					service = new BackgroundQueueService(options);
+
+					var prev = Interlocked.CompareExchange(ref _service, service, null);
+					if (prev != null)
+					{
+						service.Dispose();
+						service = prev;
+					}
+
+					service.StartAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+				}
+				return service;
+			}
+		}
 
 		public BackgroundQueueRegisteredObject()
 		{
